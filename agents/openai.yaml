@@ -1,0 +1,4 @@
+interface:
+  display_name: "OriginPro CLI Plot"
+  short_description: "用外部 Python 生成并校验可编辑 Origin 项目图"
+  default_prompt: "Use $originpro-cli-plot to inspect my data, confirm the plot plan and template choice, then create a verified Origin OPJU without MCP."

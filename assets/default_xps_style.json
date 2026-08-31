@@ -1,0 +1,27 @@
+{
+  "name": "PU XPS paper style 2026-08",
+  "graph_template": "origin",
+  "page_background": "#FFFFFF",
+  "font_family": "Arial",
+  "axis_title_size_pt": 26,
+  "tick_label_size_pt": 22,
+  "frame_width_pt": 2.0,
+  "x_label": "Binding Energy (eV)",
+  "y_label": "Intensity (a.u.)",
+  "reverse_x": true,
+  "show_y_tick_labels": false,
+  "legend": false,
+  "y_padding_fraction": 0.08,
+  "series": {
+    "raw": {"color": "#595959", "line_width": 1.5},
+    "fit": {"color": "#FF0000", "line_width": 2.0},
+    "component1": {"color": "#F28E2B", "line_width": 1.5},
+    "component2": {"color": "#77AADD", "line_width": 1.5},
+    "component3": {"color": "#E7298A", "line_width": 1.5},
+    "component4": {"color": "#66AA55", "line_width": 1.5},
+    "component5": {"color": "#AA4499", "line_width": 1.5},
+    "component6": {"color": "#44AA99", "line_width": 1.5},
+    "background": {"color": "#7F7F7F", "line_width": 1.5},
+    "other": {"color": "#333333", "line_width": 1.5}
+  }
+}
