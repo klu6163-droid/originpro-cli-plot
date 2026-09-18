@@ -23,6 +23,7 @@ def main() -> int:
         help="Confirmed UTF-8 Origin job JSON; repeat for multiple jobs",
     )
     parser.add_argument("--output", required=True, help="Destination .cmd path")
+    parser.add_argument('--contract', action='append', required=True, help='Confirmed task record for each --job, in the same order')
     parser.add_argument("--python", default=sys.executable, help="Python executable for the controller")
     parser.add_argument("--origin-exe", help="Optional exact Origin executable")
     parser.add_argument(
@@ -43,6 +44,15 @@ def main() -> int:
     if args.timeout <= 0 or args.cli_startup_timeout <= 0:
         parser.error("--timeout and --cli-startup-timeout must be positive")
     jobs = [Path(value).expanduser().resolve(strict=True) for value in args.job]
+    contracts = [Path(value).expanduser().resolve(strict=True) for value in args.contract]
+    if len(contracts) != len(jobs):
+        parser.error('Supply one --contract for each --job')
+    from delivery_contract import read, validate
+    for job, contract in zip(jobs, contracts):
+        value = read(contract)
+        validate(value)
+        if value['backend'] != 'native' or Path(value['input']).resolve() != job:
+            parser.error('A contract does not match its job')
     output = Path(args.output).expanduser().resolve(strict=False)
     if output.suffix.lower() != ".cmd":
         parser.error("--output must end with .cmd")
@@ -67,6 +77,8 @@ def main() -> int:
         f'>"%RUN_LOG%" echo OriginPro job batch started with backend {args.backend}',
     ]
     for index, job in enumerate(jobs, start=1):
+        contract = contracts[index-1]
+        delivery = job.with_name(job.stem+'_delivery')
         label = f"Job {index}/{len(jobs)}: {job.name}"
         lines.extend(
             [
@@ -74,7 +86,7 @@ def main() -> int:
                 f'>>"%RUN_LOG%" echo ==== {label} build ====',
                 (
                     f"{cmd_quote(python_exe)} {cmd_quote(controller)} --job {cmd_quote(job)} "
-                    f"--execute {common_options} >>\"%RUN_LOG%\" 2>&1"
+                    f"--execute --contract {cmd_quote(contract)} --delivery-dir {cmd_quote(delivery)} {common_options} >>\"%RUN_LOG%\" 2>&1"
                 ),
                 "if errorlevel 1 goto :failed",
                 f'>>"%RUN_LOG%" echo ==== {label} verify ====',
@@ -88,7 +100,7 @@ def main() -> int:
     lines.extend(
         [
         "echo.",
-        f"echo {len(jobs)} Origin project(s) created and verified.",
+        f"echo {len(jobs)} Origin project(s) passed programmatic checks. Final image review is still required.",
         'type "%RUN_LOG%"',
         "pause",
         "exit /b 0",

@@ -1,0 +1,23 @@
+{
+  "curve_preset": "ordinary_curve",
+  "specification": "ordinary-curve-style.md",
+  "specification_version": "0.2",
+  "source_status": "draft_for_user_editing; supplied by user as current default",
+  "graph_template": "origin",
+  "page_width_mm": 279.4,
+  "page_height_mm": 215.9,
+  "layer_geometry": {"left": 18, "top": 10, "width": 68, "height": 72},
+  "font_family": "Arial",
+  "axis_title_size_pt": 32,
+  "tick_label_size_pt": 26,
+  "legend_size_pt": 22,
+  "frame_width_pt": 3,
+  "major_tick_length_pt": 8,
+  "minor_tick_length_pt": 4,
+  "line_width_pt": 3,
+  "show_y_tick_labels": true,
+  "legend": "auto",
+  "y_padding_fraction": 0.08,
+  "curve_palette": ["#515151", "#FF4F4F", "#FF954F", "#00AC00", "#4FA7FF", "#804FFF", "#B94FFF"],
+  "implementation_choices": ["Provisional entries in the supplied v0.2 specification are editable defaults, not additional approval questions.", "Legend initially occupies the emptiest candidate corner; actual exported preview must be checked for overlap."]
+}

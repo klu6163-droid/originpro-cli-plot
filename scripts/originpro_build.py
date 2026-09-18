@@ -17,6 +17,11 @@ import time
 from pathlib import Path
 from typing import Any
 
+_SCRIPT_DIR = Path(__file__).resolve().parent
+if str(_SCRIPT_DIR) not in sys.path:
+    sys.path.insert(0, str(_SCRIPT_DIR))
+from origin_text import origin_rich_text
+
 
 class JobError(RuntimeError):
     """Raised when a job is unsafe or internally inconsistent."""
@@ -183,7 +188,10 @@ def validate_job(job_path: Path, require_output: bool = False) -> dict[str, Any]
             raise JobError(f"graph.series[{index}].y_column must be an integer")
         if not 0 <= entry["y_column"] < len(fields):
             raise JobError(f"graph.series[{index}].y_column is outside worksheet.columns")
-        if entry["y_column"] == x_column:
+        series_x = entry.get('x_column', x_column)
+        if not isinstance(series_x, int) or not 0 <= series_x < len(fields):
+            raise JobError(f"graph.series[{index}].x_column is outside worksheet.columns")
+        if entry["y_column"] == series_x:
             raise JobError(f"graph.series[{index}] cannot use the X column as Y")
 
     style_file = resolved_path(graph.get("style_file"), base)
@@ -214,6 +222,11 @@ def validate_job(job_path: Path, require_output: bool = False) -> dict[str, Any]
             "_row_count": row_count,
         }
     )
+    if style_file:
+        style = load_json(style_file)
+        if style.get('curve_preset'):
+            from curve_presets import compile_mapping, fit_consistency
+            fit_consistency(normalized, compile_mapping(normalized, style))
     return normalized
 
 
@@ -261,6 +274,11 @@ def prepare_project(op: Any, job: dict[str, Any], staged_project: Path) -> tuple
     if template is not None:
         shutil.copy2(template, staged_project)
         op.open(str(staged_project), readonly=False, asksave=False)
+        if os.environ.get('ORIGINPRO_DELIVERY_DIR'):
+            from origin_readback import snapshot
+            from delivery_contract import write
+            job['_template_snapshot'] = snapshot(op)
+            write(Path(os.environ['ORIGINPRO_DELIVERY_DIR']) / 'template-baseline.json', job['_template_snapshot'])
     else:
         op.new()
 
@@ -297,6 +315,10 @@ def prepare_project(op: Any, job: dict[str, Any], staged_project: Path) -> tuple
 
 
 def configure_graph(op: Any, job: dict[str, Any], sheet: Any, graph_page: Any, layer: Any) -> dict[str, Any]:
+    selected_style = load_json(job['_style_file']) if job.get('_style_file') else {}
+    if selected_style.get('curve_preset'):
+        from curve_presets import configure
+        return configure(op, job, sheet, graph_page, layer, selected_style)
     graph_job = job["graph"]
     series = graph_job["series"]
     plots = list(layer.plot_list())
@@ -310,9 +332,9 @@ def configure_graph(op: Any, job: dict[str, Any], sheet: Any, graph_page: Any, l
     for index, entry in enumerate(series):
         if index < len(plots):
             plot = plots[index]
-            plot.change_data(sheet, x=x_column, y=entry["y_column"])
+            plot.change_data(sheet, x=entry.get('x_column',x_column), y=entry["y_column"])
         else:
-            plot = layer.add_plot(sheet, coly=entry["y_column"], colx=x_column, type="l")
+            plot = layer.add_plot(sheet, coly=entry["y_column"], colx=entry.get('x_column',x_column), type="l")
             plots.append(plot)
 
         role_style = style.get("series", {}).get(entry.get("role", "other"), {})
@@ -323,10 +345,18 @@ def configure_graph(op: Any, job: dict[str, Any], sheet: Any, graph_page: Any, l
         if line_width is not None:
             plot.set_cmd(f"-w {float(line_width)}")
 
-    x_label = graph_job.get("x_label", style.get("x_label", "X"))
-    y_label = graph_job.get("y_label", style.get("y_label", "Y"))
+    x_label = origin_rich_text(graph_job.get("x_label", style.get("x_label", "X")))
+    y_label = origin_rich_text(graph_job.get("y_label", style.get("y_label", "Y")))
     layer.axis("x").title = x_label
     layer.axis("y").title = y_label
+    if not template_mode and style.get('font_family'):
+        font = int(op.lt_float(f"font({style['font_family']})"))
+        for name in ('XB', 'YL'):
+            label = layer.label(name)
+            label.set_int('font', font)
+            label.set_float('fsize', float(style.get('axis_title_size_pt', 18)))
+        for axis in ('x', 'y', 'x2', 'y2'):
+            layer.lt_exec(f"layer.{axis}.label.font={font};layer.{axis}.label.pt={float(style.get('tick_label_size_pt', 14))};")
 
     reverse_x = bool(graph_job.get("reverse_x", style.get("reverse_x", False)))
     x_values = job["_columns"][job["_fields"][x_column]]
@@ -342,6 +372,18 @@ def configure_graph(op: Any, job: dict[str, Any], sheet: Any, graph_page: Any, l
     )
     layer.set_xlim(x_begin, x_end)
     layer.set_ylim(y_begin, y_end)
+
+    # Axis titles attached to data scales otherwise retain old data coordinates after range changes.
+    # Preserve their template page position by assigning it against the new coordinate system.
+    template_state = job.get('_template_snapshot', {}).get('values', {})
+    for name in ('XB', 'YL'):
+        label = layer.label(name)
+        prefix = f'g1/l1/text/{name}'
+        if label and template_state.get(prefix+'/show'):
+            label.set_int('attach', 1)
+            for prop in ('left', 'top'):
+                if prefix+'/'+prop in template_state:
+                    label.set_float(prop, template_state[prefix+'/'+prop])
 
     legend = bool(graph_job.get("legend", style.get("legend", True)))
     if not legend:
@@ -491,6 +533,10 @@ def embedded_build(job_path: Path) -> dict[str, Any]:
     """Build inside Origin's embedded Python; never call op.exit() here."""
     job = validate_job(job_path, require_output=False)
     import originpro as op
+
+    if os.environ.get('ORIGINPRO_DELIVERY_DIR'):
+        from origin_readback import install_save_hook
+        install_save_hook(op, os.environ['ORIGINPRO_DELIVERY_DIR'], refresh_layout=True)
 
     output = job["_output_opju"]
     qa_png = job["_qa_png"]
@@ -753,6 +799,8 @@ def main() -> int:
     mode.add_argument("--execute", action="store_true", help="Build the OPJU and QA PNG")
     mode.add_argument("--verify-only", action="store_true", help="Open and verify the existing output OPJU")
     parser.add_argument("--show-origin", action="store_true", help="Show the independent Origin instance")
+    parser.add_argument('--contract', help='Shared confirmed delivery record (required for execution)')
+    parser.add_argument('--delivery-dir', help='New directory for readback reports and all exports')
     parser.add_argument(
         "--backend",
         choices=("auto", "cli", "com"),
@@ -784,6 +832,16 @@ def main() -> int:
                 "column_count": len(job["_fields"]),
                 "series_count": len(job["graph"]["series"]),
             }
+        elif args.execute:
+            if not args.contract:
+                raise JobError('Execution requires --contract; prepare and record the existing user confirmation with originpro_delivery.py.')
+            from delivery_contract import read
+            from originpro_delivery import run
+            record = read(args.contract)
+            if record['backend'] != 'native' or Path(record['input']).resolve() != job_path:
+                raise JobError('Delivery record does not match this native job')
+            result = run(args.contract, args.delivery_dir, backend=args.backend, origin_exe=args.origin_exe,
+                         timeout=args.timeout, cli_startup_timeout=args.cli_startup_timeout)
         else:
             result = run_selected_backend(
                 job,
@@ -802,4 +860,7 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    managed = Path(__file__).resolve().parents[1] / 'vendor/editaplot/runtime/.editaplot-venv' / ('Scripts/python.exe' if os.name == 'nt' else 'bin/python')
+    if managed.is_file() and managed.resolve() != Path(sys.executable).resolve():
+        raise SystemExit(subprocess.call([str(managed), '-X', 'utf8', __file__, *sys.argv[1:]]))
     raise SystemExit(main())

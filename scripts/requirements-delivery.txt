@@ -1,0 +1,2 @@
+# Additional PDF-content inspector; install only in the private engine environment.
+pypdf==6.16.2

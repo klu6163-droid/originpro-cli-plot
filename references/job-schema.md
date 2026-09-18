@@ -1,6 +1,9 @@
 # OriginPro build job schema
 
-The build script accepts UTF-8 JSON. Prepare a numeric CSV with one header row and equal-length columns.
+The build script accepts UTF-8 JSON. Prepare a numeric CSV with one header row and equal-length
+columns; independent grids occupy separate X/Y pairs and absent tail rows stay missing.
+For new figures use the two presets in [curve-defaults-workflow.md](curve-defaults-workflow.md).
+The example below documents the retained legacy format.
 
 ```json
 {
@@ -42,8 +45,13 @@ The build script accepts UTF-8 JSON. Prepare a numeric CSV with one header row a
 
 - `template_opju` is either `null` or a user-confirmed `.opju`/`.opj` path.
 - Column and series indexes are zero-based.
+- Each series can supply `x_column`; otherwise it uses `graph.x_column`. The new presets preserve
+  each pair's acquisition order. Their peak background-mode and fill-target fields are documented
+  in the linked workflow.
 - Blank CSV cells become missing values, not zeros.
-- With a template, the script preserves existing plot styling unless a series entry explicitly includes `color` or `line_width`.
+- With a template, legacy jobs preserve existing plot styling unless a series entry includes
+  `color` or `line_width`. Selecting one of the new preset style files explicitly applies that
+  preset's presentation to the single graph/layer.
 - Without a template, `style_file` is required. Series styles are selected by `role`; supported roles are `raw`, `fit`, `component1` through `component6`, `background`, and `other`.
 - `x_from`/`x_to` and `y_from`/`y_to` may be `null` for data-driven ranges. For reversed XPS axes, the automatic X range is maximum to minimum.
 - The output must not be the source CSV or template. Existing output requires `overwrite: true` and user authorization.

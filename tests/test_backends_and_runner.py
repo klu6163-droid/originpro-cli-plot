@@ -89,8 +89,19 @@ class RunnerGenerationTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temporary:
             root = Path(temporary)
             jobs = [root / "job_c.json", root / "job_o.json"]
+            import delivery_contract as dc
+            data = root / 'data.csv'
+            data.write_text('x,y\n1,2\n2,3\n', encoding='utf-8')
+            style = root / 'style.json'
+            dc.write(style, {})
+            contracts = []
             for job in jobs:
-                job.write_text("{}", encoding="utf-8")
+                dc.write(job, {'data_csv': str(data), 'output_opju': str(job.with_suffix('.opju')),
+                              'worksheet': {'columns': [{'field':'x'}, {'field':'y'}]},
+                              'graph': {'x_column':0, 'series':[{'y_column':1}], 'style_file':str(style)}})
+                contract = job.with_name(job.stem+'-confirmed.json')
+                dc.write(contract, dc.confirm(dc.prepare('native',job), 'Synthetic runner test', 'unittest fixture', 'test_fixture'))
+                contracts.append(contract)
             output = root / "run_all.cmd"
             arguments = [
                 "make_user_runner.py",
@@ -98,6 +109,7 @@ class RunnerGenerationTests(unittest.TestCase):
                 str(jobs[0]),
                 "--job",
                 str(jobs[1]),
+                '--contract', str(contracts[0]), '--contract', str(contracts[1]),
                 "--output",
                 str(output),
                 "--backend",
@@ -115,7 +127,8 @@ class RunnerGenerationTests(unittest.TestCase):
             self.assertEqual(text.count(str(jobs[1].resolve())), 2)
             self.assertEqual(text.count("--backend auto"), 4)
             self.assertEqual(text.count("pause"), 2)
-            self.assertIn("2 Origin project(s) created and verified.", text)
+            self.assertIn("2 Origin project(s) passed programmatic checks.", text)
+            self.assertEqual(text.count('--contract'), 2)
             self.assertIn("--cli-startup-timeout 12", text)
 
 
